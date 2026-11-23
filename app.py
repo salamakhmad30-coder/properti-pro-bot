@@ -431,6 +431,10 @@ KIE_API_KEY = os.getenv("KIE_API_KEY", "").strip()
 KIE_TEXT_API_KEY = os.getenv("KIE_TEXT_API_KEY", "").strip() or KIE_API_KEY
 KIE_TEXT_MODEL = os.getenv("KIE_TEXT_MODEL", "gpt-6.1-sol").strip() or "gpt-6.1-sol"
 KIE_IMAGE_MODEL = os.getenv("KIE_IMAGE_MODEL", "gpt-image-2-5-flare-text-to-image").strip() or "gpt-image-2-5-flare-text-to-image"
+KIE_RESPONSES_API_KEY = os.getenv("KIE_RESPONSES_API_KEY", "").strip()
+KIE_RESPONSES_MODEL = os.getenv("KIE_RESPONSES_MODEL", "deepseek-v4-1-flash").strip() or "deepseek-v4-1-flash"
+KIE_RESPONSES_ENDPOINT = os.getenv("KIE_RESPONSES_ENDPOINT", "https://api.kie.ai/openai/v1/responses").strip() or "https://api.kie.ai/openai/v1/responses"
+KIE_REASONING_EFFORT = os.getenv("KIE_REASONING_EFFORT", "low").strip() or "low"
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "").strip()
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "").strip()
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "").strip()
@@ -439,7 +443,7 @@ GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash").strip() or "gemini-
 IMAGE_MODEL = os.getenv("IMAGE_MODEL", "gpt-image-1").strip() or "gpt-image-1"
 
 def llm_available():
-    return bool(KIE_TEXT_API_KEY or os.getenv("KIE_TEXT_API_KEY", "").strip() or KIE_API_KEY or os.getenv("KIE_API_KEY", "").strip() or OPENROUTER_API_KEY or os.getenv("OPENROUTER_API_KEY", "").strip() or GEMINI_API_KEY or os.getenv("GEMINI_API_KEY", "").strip())
+    return bool(KIE_RESPONSES_API_KEY or os.getenv("KIE_RESPONSES_API_KEY", "").strip() or KIE_TEXT_API_KEY or os.getenv("KIE_TEXT_API_KEY", "").strip() or KIE_API_KEY or os.getenv("KIE_API_KEY", "").strip() or OPENROUTER_API_KEY or os.getenv("OPENROUTER_API_KEY", "").strip() or GEMINI_API_KEY or os.getenv("GEMINI_API_KEY", "").strip())
 
 PERSONAS = [
     ("Luma", "Data Analyst", "📊",
@@ -546,7 +550,38 @@ def meeting_get_detail(meeting_id):
     return None
 
 def gemini_call(prompt, temperature=0.85, max_tokens=900):
-    # Prefer KIE AI (OpenAI-compatible /v1/chat/completions) kalau key teksnya ada
+    # Prefer KIE Responses API (DeepSeek V4.1 Flash) kalau key-nya ada
+    responses_key = KIE_RESPONSES_API_KEY or os.getenv("KIE_RESPONSES_API_KEY", "").strip()
+    if responses_key:
+        effort = os.getenv("KIE_REASONING_EFFORT", KIE_REASONING_EFFORT).strip() or "low"
+        r = requests.post(
+            KIE_RESPONSES_ENDPOINT,
+            headers={"Authorization": f"Bearer {responses_key}", "Content-Type": "application/json"},
+            json={"model": KIE_RESPONSES_MODEL,
+                  "stream": False,
+                  "reasoning": {"effort": effort},
+                  "input": [{"role": "user", "content": [{"type": "input_text", "text": prompt}]}]},
+            timeout=120,
+        )
+        data = r.json() if r.text else {}
+        if r.status_code != 200 or (isinstance(data, dict) and data.get("code") not in (None, 200)):
+            msg = data.get("msg") if isinstance(data, dict) else str(data)[:300]
+            raise RuntimeError(f"KIE DeepSeek error {r.status_code}: {msg}")
+        try:
+            texts = []
+            for item in data.get("output", []):
+                if not isinstance(item, dict) or item.get("type") != "message":
+                    continue
+                for part in item.get("content", []):
+                    if isinstance(part, dict) and part.get("type") == "output_text" and part.get("text"):
+                        texts.append(part["text"])
+            content = "\n".join(texts).strip()
+            if content:
+                return content
+            raise ValueError("no output_text message in response")
+        except Exception:
+            raise RuntimeError("KIE DeepSeek: respons kosong / tidak terduga")
+    # Fallback: KIE AI (OpenAI-compatible /v1/chat/completions) kalau key teksnya ada
     kie_key = KIE_TEXT_API_KEY or os.getenv("KIE_TEXT_API_KEY", "").strip() or KIE_API_KEY or os.getenv("KIE_API_KEY", "").strip()
     if kie_key:
         r = requests.post(
@@ -669,8 +704,9 @@ def index():
 @app.route("/api/health")
 def health():
     storage = "supabase" if use_sb() else ("postgres" if use_pg() else "json")
-    llm = "kie" if (KIE_TEXT_API_KEY or os.getenv("KIE_TEXT_API_KEY","").strip() or KIE_API_KEY or os.getenv("KIE_API_KEY","").strip()) else ("openrouter" if (OPENROUTER_API_KEY or os.getenv("OPENROUTER_API_KEY","").strip()) else ("gemini" if (GEMINI_API_KEY or os.getenv("GEMINI_API_KEY","").strip()) else None))
-    return jsonify({"ok": True, "bot": bool(TOKEN), "storage": storage, "llm": llm, "kie": bool(KIE_API_KEY or os.getenv("KIE_API_KEY","").strip()), "openrouter": bool(OPENROUTER_API_KEY or os.getenv("OPENROUTER_API_KEY","").strip()), "gemini": bool(os.getenv("GEMINI_API_KEY","").strip()), "tasks": len(load_tasks()), "time": datetime.now().isoformat()})
+    responses_key = KIE_RESPONSES_API_KEY or os.getenv("KIE_RESPONSES_API_KEY","").strip()
+    llm = "kie-deepseek" if responses_key else ("kie" if (KIE_TEXT_API_KEY or os.getenv("KIE_TEXT_API_KEY","").strip() or KIE_API_KEY or os.getenv("KIE_API_KEY","").strip()) else ("openrouter" if (OPENROUTER_API_KEY or os.getenv("OPENROUTER_API_KEY","").strip()) else ("gemini" if (GEMINI_API_KEY or os.getenv("GEMINI_API_KEY","").strip()) else None)))
+    return jsonify({"ok": True, "bot": bool(TOKEN), "storage": storage, "llm": llm, "kie": bool(KIE_API_KEY or os.getenv("KIE_API_KEY","").strip()), "deepseek": bool(responses_key), "openrouter": bool(OPENROUTER_API_KEY or os.getenv("OPENROUTER_API_KEY","").strip()), "gemini": bool(os.getenv("GEMINI_API_KEY","").strip()), "tasks": len(load_tasks()), "time": datetime.now().isoformat()})
 
 @app.route("/api/tasks", methods=["GET"])
 def api_list():
@@ -723,7 +759,7 @@ def api_meeting():
         rounds = 1
     rounds = max(1, min(3, rounds))
     if not llm_available():
-        return jsonify({"error": "API key LLM belum di-set di Vercel → Settings → Environment Variables (KIE_TEXT_API_KEY / OPENROUTER_API_KEY / GEMINI_API_KEY). Rapat belum bisa jalan."}), 503
+        return jsonify({"error": "API key LLM belum di-set di Vercel → Settings → Environment Variables (KIE_RESPONSES_API_KEY / KIE_TEXT_API_KEY / OPENROUTER_API_KEY / GEMINI_API_KEY). Rapat belum bisa jalan."}), 503
     try:
         result = run_meeting(topic, rounds)
         return jsonify(result)
