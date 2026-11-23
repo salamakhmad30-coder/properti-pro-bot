@@ -77,7 +77,7 @@ _bot = telebot.TeleBot(TOKEN, parse_mode="HTML") if TOKEN else None
 if _bot:
     @_bot.message_handler(commands=["start", "help"])
     def h_start(m):
-        _bot.reply_to(m, f"Halo {m.from_user.first_name}! 👋\n\nGw <b>Properti Pro Bot</b> - Azira Team lo. <b>UDAH NYAMBUNG KE DASHBOARD WEB!</b> 🎉\n\nChat ID lo: <code>{m.chat.id}</code>\n\n/task - Lihat task (sama kayak di web)\n/tambah [judul] - Tambah task (muncul di web)\n/done [id] - Selesaikan task (web ikut ke-update)\n/laporan - Laporan harian\n/team - Lihat tim AI\n/id - Lihat Chat ID")
+        _bot.reply_to(m, f"Halo {m.from_user.first_name}! 👋\n\nGw <b>Properti Pro Bot</b> - Azira Team lo. <b>UDAH NYAMBUNG KE DASHBOARD WEB!</b> 🎉\n\nChat ID lo: <code>{m.chat.id}</code>\n\n/task - Lihat task (sama kayak di web)\n/tambah [judul] - Tambah task (muncul di web)\n/done [id] - Selesaikan task (web ikut ke-update)\n/laporan - Laporan harian\n/team - Lihat tim AI\n/id - Lihat Chat ID\n/testlaporan - Test auto-laporan jam 8 pagi\n\n⏰ Auto-laporan: Tiap hari jam 08:00 WIB, bot kirim laporan otomatis ke lo.")
 
     @_bot.message_handler(commands=["id"])
     def h_id(m):
@@ -138,6 +138,13 @@ if _bot:
             txt += f"<b>{n}</b> - {r} • Aktif: {len([t for t in mine if t['status']!='done'])}\n"
         _bot.reply_to(m, txt)
 
+
+    @_bot.message_handler(commands=["testlaporan"])
+    def h_testlaporan(m):
+        _bot.reply_to(m, "⏳ Lagi kirim test auto-laporan ke admin...")
+        ok = notify_admin(build_laporan_text())
+        _bot.reply_to(m, "✅ Test auto-laporan terkirim! Cek chat admin." if ok else "❌ Gagal kirim. Cek ADMIN_CHAT_ID di Railway (harus 7484848251).")
+
     @_bot.message_handler(func=lambda m: True)
     def h_fallback(m):
         t = m.text.lower()
@@ -157,6 +164,61 @@ if _bot:
 else:
     def run_bot():
         print("[bot] TOKEN kosong, bot tidak jalan. Set TELEGRAM_BOT_TOKEN di Railway.", flush=True)
+
+
+# ================= AUTO-LAPORAN JAM 8 PAGI =================
+# Scheduler sederhana: cek tiap 60 detik, kalau jam 08:00 WIB dan belum kirim hari ini -> kirim laporan
+# WIB = UTC+7. Railway pakai UTC, jadi 08:00 WIB = 01:00 UTC
+# Jadi kita cek waktu WIB dengan +7 jam dari UTC
+import datetime as _dt
+_last_report_date = {"date": None}
+
+def build_laporan_text():
+    tasks = load_tasks()
+    done = len([t for t in tasks if t["status"]=="done"]); doing = len([t for t in tasks if t["status"]=="doing"]); todo = len([t for t in tasks if t["status"]=="todo"])
+    overdue = [t for t in tasks if t["status"]!="done" and t.get("deadline","") < _dt.datetime.now().strftime("%Y-%m-%d")]
+    txt = f"☀️ <b>Selamat Pagi Juragan! Laporan Harian - {_dt.datetime.now().strftime('%d %B %Y')} - Jam 08:00 WIB</b>\n\n"
+    txt += f"📊 Total: {len(tasks)} • ✅ Selesai: {done} • 🔄 Dikerjakan: {doing} • 📌 Belum mulai: {todo}\n"
+    if overdue:
+        txt += f"\n⚠️ <b>OVERDUE ({len(overdue)}):</b>\n"
+        for t in overdue:
+            txt += f"• #{t['id']} {t['title']} (deadline {t['deadline']}, {t['assignee']})\n"
+    txt += "\n<b>Per Karyawan AI:</b>\n"
+    for n, r in TEAM.items():
+        mine = [t for t in tasks if t["assignee"]==n]; md = len([t for t in mine if t["status"]=="done"])
+        txt += f"• {n} ({r}): {md}/{len(mine)} selesai\n"
+    txt += "\n<b>Task Hari Ini (yang harus dikejar):</b>\n"
+    today_tasks = [t for t in tasks if t["status"]!="done"]
+    if not today_tasks:
+        txt += "🎉 Semua beres! Gak ada yang tertunda.\n"
+    else:
+        for t in today_tasks[:10]:
+            txt += f"{fmt(t)}\n"
+    txt += "\nKetik /task buat detail, /tambah buat nambah task baru. Semangat closing hari ini! 💪"
+    return txt
+
+def auto_report_loop():
+    print("[scheduler] Auto-laporan jam 08:00 WIB aktif...", flush=True)
+    while True:
+        try:
+            now_utc = _dt.datetime.utcnow()
+            now_wib = now_utc + _dt.timedelta(hours=7)  # UTC -> WIB
+            today = now_wib.strftime("%Y-%m-%d")
+            # Kirim tepat di jam 08:00 - 08:04 WIB, sekali sehari
+            if now_wib.hour == 8 and 0 <= now_wib.minute <= 4 and _last_report_date["date"] != today:
+                print(f"[scheduler] Kirim auto-laporan {today} jam {now_wib.strftime('%H:%M')} WIB", flush=True)
+                ok = notify_admin(build_laporan_text())
+                if ok:
+                    _last_report_date["date"] = today
+                    print(f"[scheduler] Auto-laporan terkirim {today}", flush=True)
+                else:
+                    print(f"[scheduler] Gagal kirim, coba lagi 60 detik", flush=True)
+            # Test manual: kirim /testlaporan di Telegram untuk test tanpa nunggu jam 8
+        except Exception as e:
+            print(f"[scheduler] error: {e}", flush=True)
+        time.sleep(60)
+
+# Handler test manual di bot (di dalam run_bot section, ditambahkan via monkey patch di bawah)
 
 # ================= WEB API + DASHBOARD =================
 @app.route("/")
@@ -207,5 +269,6 @@ def api_delete(tid):
 
 if __name__ == "__main__":
     threading.Thread(target=run_bot, daemon=True).start()
+    threading.Thread(target=auto_report_loop, daemon=True).start()
     print(f"[web] Dashboard jalan di port {PORT} - bot + web 1 otak", flush=True)
     app.run(host="0.0.0.0", port=PORT)
