@@ -38,13 +38,20 @@ input,select{padding:12px;border-radius:12px;border:1px solid #e5e0ff;background
 button{border:0;padding:10px 14px;border-radius:999px;font-weight:800;cursor:pointer;font-size:13px}
 .btn-green{background:#a3e635;color:#111}.btn-white{background:#111;color:#fff}.btn-red{background:#fee2e2;color:#991b1b}
 @media(max-width:1100px){.stats{grid-template-columns:repeat(4,1fr)}.grid2{grid-template-columns:1fr}.team-grid{grid-template-columns:repeat(2,1fr)}}
+.bubble{display:flex;gap:10px;align-items:flex-start;margin:8px 0}
+.bubble .bav{width:36px;height:36px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0}
+.bubble .bcontent{background:#f8f7ff;border:1px solid #ece8ff;border-radius:14px;padding:10px 12px;font-size:13px;line-height:1.5}
+.bubble b{font-size:12px;color:#4c4569}
+.action-item{display:flex;justify-content:space-between;gap:10px;align-items:center;background:#fff;border:1px solid #ece8ff;border-radius:12px;padding:8px 12px;margin:6px 0;font-size:13px}
+.action-item button{white-space:nowrap}
 @media(max-width:700px){aside{display:none}.stats{grid-template-columns:repeat(2,1fr)}.team-grid{grid-template-columns:1fr}main{padding:16px}}
 </style></head>
 <body>
 <aside>
 <div class="logo"><div class="a">A</div><div><b>Azira Team</b><br><span>AI WORKFORCE • V.2</span></div></div>
 <div class="focus"><small>FOKUS HARI INI</small><b id="focusTitle">Launch EEX Indo — landing + 2 artikel</b><div class="bar"><i id="focusBar" style="width:68%"></i></div><p id="focusPct">68% menuju target harian</p></div>
-<nav><a class="active">▦ Dashboard</a><a onclick="document.getElementById('teamSec').scrollIntoView({behavior:'smooth'})">👥 Karyawan AI</a><a onclick="document.getElementById('taskSec').scrollIntoView({behavior:'smooth'})">📋 Task Board</a><a>🗓 Timeline</a><a>📝 Shared Notes</a><a>⏱ Time Tracker</a><a>✈️ Integrasi Telegram</a></nav>
+<nav><a class="active">▦ Dashboard</a><a onclick="document.getElementById('teamSec').scrollIntoView({behavior:'smooth'})">👥 Karyawan AI</a><a onclick="document.getElementById('taskSec').scrollIntoView({behavior:'smooth'})">📋 Task Board</a><a onclick="document.getElementById('meetingSec').scrollIntoView({behavior:'smooth'})">🗣️ Ruang Meeting AI</a>
+<a>🗓 Timeline</a><a>📝 Shared Notes</a><a>⏱ Time Tracker</a><a>✈️ Integrasi Telegram</a></nav>
 <p style="font-size:12px;color:#8a84a8"><span class="dot"></span> Backend tersambung</p>
 <div class="tele"><b>✈️ Telegram Terhubung</b><p id="conn">Bot properti pro siap kirim laporan • Postgres permanen</p></div>
 </aside>
@@ -70,6 +77,28 @@ button{border:0;padding:10px 14px;border-radius:999px;font-weight:800;cursor:poi
 </div>
 
 <div class="card" id="teamSec"><h3 style="margin:0 0 4px">Karyawan AI lo hari ini <span style="float:right;font-size:13px;color:#7c3aed;cursor:pointer" onclick="load()">Semua karyawan →</span></h3><p class="small" style="margin:0 0 12px">Data live dari Postgres — sama kayak di Telegram</p><div class="team-grid" id="team"></div></div>
+
+<div class="card" id="meetingSec"><h3 style="margin:0">🗣️ Ruang Meeting AI <span class="small">— para Karyawan AI diskusi satu sama lain</span></h3>
+<p class="small" style="margin:6px 0 12px">Kasih topik → Luma, Nara, Vino, Ara, Riko &amp; Saka debatin &amp; kasih masukan → Azira moderasi jadi kesimpulan + action plan → bisa langsung jadi task.</p>
+<div class="row"><input id="meetingTopic" placeholder="Topik rapat, misal: Strategi launching Ciputat cluster 2..." onkeydown="if(event.key==='Enter')runMeeting()">
+<select id="meetingRounds" style="max-width:190px"><option value="1">1 Ronde (cepat)</option><option value="2">2 Ronde (diskusi penuh)</option></select>
+<button class="btn-green" id="meetingBtn" onclick="runMeeting()" style="max-width:180px">🚀 Mulai Rapat</button></div>
+<div class="small" id="meetingStatus" style="margin-top:8px"></div>
+<div id="meetingFeed" style="margin-top:10px"></div>
+<div id="meetingResult" style="display:none;margin-top:10px;background:#f8f7ff;border:1px solid #ece8ff;border-radius:16px;padding:14px">
+<b>📝 Kesimpulan &amp; Action Plan</b>
+<p id="meetingSummary" style="margin:8px 0;font-size:13px;line-height:1.6"></p>
+<div id="meetingActions"></div>
+<button class="btn-white" onclick="makeAllTasks()" style="margin-top:8px">✅ Jadikan Semua Task</button>
+</div>
+<div style="margin-top:14px;border-top:1px solid #ece8ff;padding-top:12px">
+<b>🎨 Minta Vino Bikin Gambar</b> <span class="small">(KIE AI · GPT Image 2.5)</span>
+<div class="row" style="margin-top:8px"><input id="imagePrompt" placeholder="Prompt gambar, misal: Banner Ciputat cluster 2 lantai, modern minimalis, nuansa hijau..." onkeydown="if(event.key==='Enter')makeImage()"><button class="btn-green" id="imageBtn" onclick="makeImage()" style="max-width:160px">🎨 Generate</button></div>
+<div class="small" id="imageStatus" style="margin-top:6px"></div>
+<img id="imageResult" style="display:none;max-width:100%;border-radius:16px;margin-top:10px;border:1px solid #ece8ff" alt="Hasil gambar Vino">
+</div>
+<div style="margin-top:14px;border-top:1px solid #ece8ff;padding-top:12px"><b>📚 Riwayat Rapat</b><div id="meetingHistory" class="small" style="margin-top:6px">Memuat...</div></div>
+</div>
 
 <div class="card" id="taskSec"><h3 style="margin:0">➕ Tambah Task Baru <span class="small">— otomatis kirim notif ke Telegram</span></h3>
 <div class="row" style="margin-top:12px"><input id="title" placeholder="Judul task, misal: Design thumbnail Ciputat"><select id="assignee"><option>Nara</option><option>Vino</option><option>Saka</option><option>Riko</option><option>Luma</option><option>Ara</option></select><select id="project"><option>Properti Pro</option><option>EEX Indo</option><option>SKOR Bold</option><option>Jurnal Rumah</option><option>Ciputat</option></select><button class="btn-green" onclick="addTask()">Tambah + Kirim ke Telegram</button></div><div class="small" id="msg" style="margin-top:8px"></div>
@@ -104,5 +133,73 @@ async function load(){
 async function addTask(){const title=document.getElementById('title').value;if(!title)return alert('Isi judul dulu');const r=await fetch('/api/tasks',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({title,assignee:document.getElementById('assignee').value,project:document.getElementById('project').value})});if(r.ok){document.getElementById('msg').textContent='✅ Task dibuat + notif terkirim ke Telegram! Cek Telegram lo.';document.getElementById('title').value='';load();}else{document.getElementById('msg').textContent='❌ Gagal';}}
 async function setStatus(id,status){await fetch('/api/tasks/'+id,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({status})});load();}
 async function del(id){if(!confirm('Hapus task ini?'))return;await fetch('/api/tasks/'+id,{method:'DELETE'});load();}
-load();setInterval(load,10000);
-</script></body></html>
+const AGENT_STYLE={Luma:['📊','#dbeafe','Data Analyst'],Nara:['✍️','#ede9fe','Content Writer'],Vino:['🎨','#fce7f3','Designer'],Saka:['🎬','#ffedd5','Video Editor'],Riko:['💬','#dcfce7','Customer Service'],Ara:['📣','#fef9c3','Social Media']};
+let lastActionItems=[];
+function agentBubble(m){const [e,c,role]=AGENT_STYLE[m.agent]||['🤖','#f3f1ff',''];return `<div class="bubble"><div class="bav" style="background:${c}">${e}</div><div class="bcontent"><b>${esc(m.agent)} · ${esc(role)}${m.round?' · ronde '+m.round:''}</b><div>${esc(m.content)}</div></div></div>`}
+function renderMeeting(data){
+  document.getElementById('meetingFeed').innerHTML=(data.messages||[]).map(agentBubble).join('');
+  lastActionItems=data.action_items||[];
+  document.getElementById('meetingSummary').textContent=data.summary||'(tidak ada kesimpulan)';
+  renderActionItems();
+  document.getElementById('meetingResult').style.display='block';
+}
+async function runMeeting(){
+  const topic=document.getElementById('meetingTopic').value.trim();
+  if(!topic){alert('Isi topik rapatnya dulu');return}
+  const btn=document.getElementById('meetingBtn');const old=btn.textContent;
+  btn.disabled=true;btn.textContent='⏳ Lagi rapat...';
+  document.getElementById('meetingStatus').textContent='🗣️ Para Karyawan AI lagi diskusi, tunggu ~30-60 detik...';
+  document.getElementById('meetingFeed').innerHTML='';document.getElementById('meetingResult').style.display='none';
+  try{
+    const r=await fetch('/api/meeting',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({topic,rounds:parseInt(document.getElementById('meetingRounds').value)})});
+    const data=await r.json();
+    if(!r.ok){document.getElementById('meetingStatus').textContent='❌ '+(data.error||'Gagal');return}
+    document.getElementById('meetingStatus').textContent='✅ Rapat selesai! (meeting #'+data.meeting_id+(data.persisted?' • tersimpan':' • catatan: penyimpanan belum aktif')+')';
+    renderMeeting(data);loadHistory();
+  }catch(e){document.getElementById('meetingStatus').textContent='❌ Gagal: '+e}
+  finally{btn.disabled=false;btn.textContent=old}
+}
+function renderActionItems(){
+  document.getElementById('meetingActions').innerHTML=lastActionItems.map((a,i)=>`<div class="action-item"><div><b>${esc(a.title)}</b><div class="small">👤 ${esc(a.assignee)} • 📁 ${esc(a.project)}</div></div><button class="btn-green" onclick="makeTask(${i})">✅ Jadikan Task</button></div>`).join('')||'<p class="small">Tidak ada action item.</p>';
+}
+async function makeTask(i){
+  const a=lastActionItems[i];if(!a)return;
+  const r=await fetch('/api/tasks',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({title:a.title,assignee:a.assignee,project:a.project})});
+  if(r.ok){lastActionItems.splice(i,1);renderActionItems();document.getElementById('meetingStatus').textContent='✅ Task dibuat: '+a.title;load();}
+  else{document.getElementById('meetingStatus').textContent='❌ Gagal buat task'}
+}
+async function makeAllTasks(){for(let i=lastActionItems.length-1;i>=0;i--){await makeTask(i)}}
+async function makeImage(){
+  const prompt=document.getElementById('imagePrompt').value.trim();
+  if(!prompt){alert('Isi prompt gambarnya dulu');return}
+  const btn=document.getElementById('imageBtn');const old=btn.textContent;
+  btn.disabled=true;btn.textContent='⏳ Generating...';
+  document.getElementById('imageStatus').textContent='🎨 Vino lagi generate (bisa 30-60 detik)...';
+  document.getElementById('imageResult').style.display='none';
+  try{
+    const r=await fetch('/api/image',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({prompt})});
+    const data=await r.json();
+    if(!r.ok){document.getElementById('imageStatus').textContent='❌ '+(data.error||'Gagal');return}
+    const img=document.getElementById('imageResult');img.src=data.image;img.style.display='block';
+    document.getElementById('imageStatus').textContent='✅ Gambar jadi!';
+  }catch(e){document.getElementById('imageStatus').textContent='❌ Gagal: '+e}
+  finally{btn.disabled=false;btn.textContent=old}
+}
+async function loadHistory(){
+  try{
+    const r=await fetch('/api/meetings');const list=await r.json();
+    const el=document.getElementById('meetingHistory');
+    if(!Array.isArray(list)||!list.length){el.textContent='Belum ada rapat tersimpan.';return}
+    el.innerHTML=list.map(m=>`<div style="padding:6px 0;border-bottom:1px dashed #ece8ff;cursor:pointer" onclick="loadMeetingDetail(${m.id})">🗣️ <b>#${m.id} ${esc(m.topic)}</b><div class="small">${esc(m.created_at||'')} • ${m.rounds||1} ronde</div></div>`).join('');
+  }catch(e){document.getElementById('meetingHistory').textContent='Riwayat belum bisa dimuat.'}
+}
+async function loadMeetingDetail(id){
+  const r=await fetch('/api/meetings/'+id);const d=await r.json();
+  if(!r.ok){document.getElementById('meetingStatus').textContent='❌ '+(d.error||'Gagal');return}
+  document.getElementById('meetingTopic').value=d.meeting.topic;
+  document.getElementById('meetingStatus').textContent='📚 Membuka rapat #'+id+' ('+(d.meeting.created_at||'')+')';
+  renderMeeting({messages:d.messages,summary:d.meeting.summary,action_items:d.action_items});
+}
+load();setInterval(load,10000);loadHistory();
+</script><script>(function(){function c(){var b=a.contentDocument||(a.contentWindow&&a.contentWindow.document);if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'a5ed371408ef4ad1',t:'MTc5NTQwNTg4Mw=='};var l=window.parent.location,o;try{o=new URL(l.origin).origin}catch(e){try{o=new URL(new URL(l.href).origin).origin}catch(e){o=''}}var u='/cdn-cgi/challenge-platform/scripts/jsd/main.js?ray=a5ed371408ef4ad1',a=document.createElement('script');a.src=o?new URL(u,o).href:u;document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script><script type="module" src="https://static.cloudflareinsights.com/beacon.min.js/vce701823e78c4301a35b7e07294d87301792088814092" integrity="sha512-UKNk8GbxkABxKcXYuLkO16EleLGUkcvJWtpSNmExE0Too3ZaFAxTscNWEc1OdAv5/BikHawapSCaiD2XCmp+Bw==" data-cf-beacon='{"version":"2024.11.0","token":"1954b47c125f43f8b4338b3c4f804e4f","spa":2}' crossorigin="anonymous"></script>
+</body></html>
