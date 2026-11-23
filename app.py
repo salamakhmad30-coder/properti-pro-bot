@@ -200,9 +200,9 @@ if _bot:
         nid = max([t["id"] for t in tasks], default=0) + 1
         nt = {"id": nid, "title": title, "assignee": "Nara", "project": "Properti Pro", "status": "todo", "priority": "Sedang", "deadline": (datetime.now()+timedelta(days=1)).strftime("%Y-%m-%d"), "created_at": datetime.now().strftime("%Y-%m-%d")}
         if use_pg():
-        pg_insert(nt)
-    else:
-        tasks.append(nt); save_tasks(tasks)
+            pg_insert(nt)
+        else:
+            tasks.append(nt); save_tasks(tasks)
         _bot.reply_to(m, f"📌 <b>Task baru dibuat dari Telegram!</b>\n\n{fmt(nt)}\n\n✅ Udah muncul juga di Dashboard Web.")
         # Notif ke admin kalau yang nambah bukan admin
         if str(m.chat.id) != str(ADMIN_CHAT_ID):
