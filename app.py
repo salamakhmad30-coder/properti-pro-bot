@@ -41,7 +41,60 @@ DEFAULT_TASKS = [
     {"id": 4, "title": "Design thumbnail Ciputat", "assignee": "Nara", "project": "Properti Pro", "status": "todo", "priority": "Sedang", "deadline": "2026-11-24", "created_at": "2026-11-23"},
 ]
 
+# ================= STORAGE v4: Postgres (Railway) + JSON fallback =================
+# Kalau DATABASE_URL ada (setelah lo Add Postgres di Railway) -> pakai Postgres, data permanen.
+# Kalau belum ada -> pakai tasks.json (biar tetap jalan sambil nunggu Postgres di-setup)
+DATABASE_URL = os.getenv("DATABASE_URL", "").strip()
+_pg_conn = None
+try:
+    import psycopg2
+    import psycopg2.extras
+    HAS_PG = True
+except Exception:
+    HAS_PG = False
+    print("[storage] psycopg2 tidak ada, pakai JSON fallback", flush=True)
+
+def pg_conn():
+    global _pg_conn
+    if _pg_conn is None or _pg_conn.closed:
+        import psycopg2
+        _pg_conn = psycopg2.connect(DATABASE_URL)
+        _pg_conn.autocommit = True
+        with _pg_conn.cursor() as cur:
+            cur.execute("""CREATE TABLE IF NOT EXISTS tasks (
+                id SERIAL PRIMARY KEY,
+                title TEXT NOT NULL,
+                assignee TEXT DEFAULT 'Nara',
+                project TEXT DEFAULT 'Properti Pro',
+                status TEXT DEFAULT 'todo',
+                priority TEXT DEFAULT 'Sedang',
+                deadline TEXT DEFAULT '',
+                created_at TEXT DEFAULT ''
+            )""")
+            # Seed sekali kalau tabel masih kosong
+            cur.execute("SELECT COUNT(*) FROM tasks")
+            if cur.fetchone()[0] == 0:
+                for t in DEFAULT_TASKS:
+                    cur.execute("INSERT INTO tasks (title, assignee, project, status, priority, deadline, created_at) VALUES (%s,%s,%s,%s,%s,%s,%s)",
+                                (t["title"], t["assignee"], t["project"], t["status"], t["priority"], t["deadline"], t.get("created_at","")))
+                print("[storage] Postgres: seed DEFAULT_TASKS berhasil", flush=True)
+    return _pg_conn
+
+def use_pg():
+    return bool(DATABASE_URL) and HAS_PG
+
 def load_tasks():
+    if use_pg():
+        try:
+            with _lock:
+                conn = pg_conn()
+                with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+                    cur.execute("SELECT id, title, assignee, project, status, priority, deadline, created_at FROM tasks ORDER BY id")
+                    rows = cur.fetchall()
+                    return [dict(r) for r in rows]
+        except Exception as e:
+            print(f"[storage] Postgres load gagal, fallback JSON: {e}", flush=True)
+    # JSON fallback
     with _lock:
         if not os.path.exists(DATA_FILE):
             return list(DEFAULT_TASKS)
@@ -52,9 +105,55 @@ def load_tasks():
             return list(DEFAULT_TASKS)
 
 def save_tasks(tasks):
+    # Di v4, save_tasks dipakai untuk kompatibilitas JSON fallback.
+    # Untuk Postgres, operasi INSERT/UPDATE dilakukan langsung di API/bot via pg helpers di bawah.
+    # Fungsi ini tetap simpan ke JSON sebagai backup, biar kalau Postgres down, data gak hilang total.
+    if use_pg():
+        return  # Postgres sudah disimpan per-operasi, jangan timpa JSON
     with _lock:
         with open(DATA_FILE, "w", encoding="utf-8") as f:
             json.dump(tasks, f, indent=2, ensure_ascii=False)
+
+def pg_insert(nt):
+    if not use_pg(): return None
+    try:
+        conn = pg_conn()
+        with conn.cursor() as cur:
+            cur.execute("INSERT INTO tasks (title, assignee, project, status, priority, deadline, created_at) VALUES (%s,%s,%s,%s,%s,%s,%s) RETURNING id",
+                        (nt["title"], nt["assignee"], nt["project"], nt["status"], nt["priority"], nt["deadline"], nt.get("created_at","")))
+            nt["id"] = cur.fetchone()[0]
+            return nt
+    except Exception as e:
+        print(f"[storage] pg_insert gagal: {e}", flush=True)
+        return None
+
+def pg_update(tid, data):
+    if not use_pg(): return False
+    try:
+        conn = pg_conn()
+        with conn.cursor() as cur:
+            sets = []; vals = []
+            for k in ["title","assignee","project","status","priority","deadline"]:
+                if k in data:
+                    sets.append(f"{k}=%s"); vals.append(data[k])
+            if not sets: return False
+            vals.append(tid)
+            cur.execute(f"UPDATE tasks SET {', '.join(sets)} WHERE id=%s", vals)
+            return True
+    except Exception as e:
+        print(f"[storage] pg_update gagal: {e}", flush=True)
+        return False
+
+def pg_delete(tid):
+    if not use_pg(): return False
+    try:
+        conn = pg_conn()
+        with conn.cursor() as cur:
+            cur.execute("DELETE FROM tasks WHERE id=%s", (tid,))
+            return True
+    except Exception as e:
+        print(f"[storage] pg_delete gagal: {e}", flush=True)
+        return False
 
 def fmt(t):
     e = {"todo": "📌", "doing": "🔄", "done": "✅"}.get(t["status"], "📌")
@@ -100,6 +199,9 @@ if _bot:
         tasks = load_tasks()
         nid = max([t["id"] for t in tasks], default=0) + 1
         nt = {"id": nid, "title": title, "assignee": "Nara", "project": "Properti Pro", "status": "todo", "priority": "Sedang", "deadline": (datetime.now()+timedelta(days=1)).strftime("%Y-%m-%d"), "created_at": datetime.now().strftime("%Y-%m-%d")}
+        if use_pg():
+        pg_insert(nt)
+    else:
         tasks.append(nt); save_tasks(tasks)
         _bot.reply_to(m, f"📌 <b>Task baru dibuat dari Telegram!</b>\n\n{fmt(nt)}\n\n✅ Udah muncul juga di Dashboard Web.")
         # Notif ke admin kalau yang nambah bukan admin
@@ -115,7 +217,9 @@ if _bot:
         tid = int(parts[1]); tasks = load_tasks()
         for t in tasks:
             if t["id"] == tid:
-                t["status"] = "done"; save_tasks(tasks)
+                t["status"] = "done"
+                if use_pg(): pg_update(tid, {"status": "done"})
+                else: save_tasks(tasks)
                 _bot.reply_to(m, f"✅ <b>Beres!</b>\n\n{fmt(t)}\n\n✅ Dashboard Web ikut ke-update.")
                 return
         _bot.reply_to(m, f"Task #{tid} gak ketemu. Cek /task dulu.")
@@ -227,7 +331,7 @@ def index():
 
 @app.route("/api/health")
 def health():
-    return jsonify({"ok": True, "bot": bool(TOKEN), "tasks": len(load_tasks()), "time": datetime.now().isoformat()})
+    return jsonify({"ok": True, "bot": bool(TOKEN), "storage": "postgres" if use_pg() else "json", "tasks": len(load_tasks()), "time": datetime.now().isoformat()})
 
 @app.route("/api/tasks", methods=["GET"])
 def api_list():
@@ -242,7 +346,10 @@ def api_create():
     tasks = load_tasks()
     nid = max([t["id"] for t in tasks], default=0) + 1
     nt = {"id": nid, "title": title, "assignee": data.get("assignee", "Nara"), "project": data.get("project", "Properti Pro"), "status": "todo", "priority": data.get("priority", "Sedang"), "deadline": data.get("deadline", (datetime.now()+timedelta(days=1)).strftime("%Y-%m-%d")), "created_at": datetime.now().strftime("%Y-%m-%d")}
-    tasks.append(nt); save_tasks(tasks)
+    if use_pg():
+        pg_insert(nt)
+    else:
+        tasks.append(nt); save_tasks(tasks)
     # >>> INI KUNCINYA: web -> Telegram <<<
     notify_admin(f"📌 <b>Task baru dari Dashboard Web!</b>\n\n{fmt(nt)}\n\nCek /task di Telegram, udah muncul juga.")
     return jsonify(nt), 201
@@ -255,7 +362,10 @@ def api_update(tid):
         if t["id"] == tid:
             for k in ["title", "assignee", "project", "status", "priority", "deadline"]:
                 if k in data: t[k] = data[k]
-            save_tasks(tasks)
+            if use_pg():
+                pg_update(tid, data)
+            else:
+                save_tasks(tasks)
             if data.get("status") == "done":
                 notify_admin(f"✅ <b>Task selesai dari Dashboard Web!</b>\n\n{fmt(t)}")
             return jsonify(t)
@@ -263,8 +373,11 @@ def api_update(tid):
 
 @app.route("/api/tasks/<int:tid>", methods=["DELETE"])
 def api_delete(tid):
-    tasks = [t for t in load_tasks() if t["id"] != tid]
-    save_tasks(tasks)
+    if use_pg():
+        pg_delete(tid)
+    else:
+        tasks = [t for t in load_tasks() if t["id"] != tid]
+        save_tasks(tasks)
     return jsonify({"ok": True})
 
 if __name__ == "__main__":
