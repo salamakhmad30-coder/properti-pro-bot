@@ -1,0 +1,5 @@
+[
+  {"id": 1, "title": "Design Website EEX", "assignee": "Vino", "project": "EEX Indo", "status": "doing", "priority": "Tinggi", "deadline": "2026-11-25"},
+  {"id": 2, "title": "Konten Listing Larangan Tangerang", "assignee": "Nara", "project": "Jurnal Rumah", "status": "todo", "priority": "Tinggi", "deadline": "2026-11-24"},
+  {"id": 3, "title": "Edit Video Cluster 2 Lantai Ciputat", "assignee": "Saka", "project": "Ciputat", "status": "doing", "priority": "Sedang", "deadline": "2026-11-26"}
+]
